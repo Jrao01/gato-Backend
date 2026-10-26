@@ -1,0 +1,338 @@
+// Gato Inventario — esquema Prisma (especificación Fase 1)
+// Convenciones:
+// - USD es la moneda base. Bs se calcula con ExchangeRate y se guarda como snapshot
+//   en cada transacción, para que los reportes históricos no cambien.
+// - Dinero: Decimal(12,4). Cantidades (unidades/kilogramos/litros): Decimal(12,3).
+// - Todo movimiento de inventario queda auditado en StockMovement con su userId.
+// - Margen histórico: SaleItem guarda costAtSale, profitUsd, profitVes y profitMargin.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── Enums ───────────────────────────
+
+enum Role {
+  ADMIN
+  VENDEDOR
+}
+
+enum Currency {
+  USD
+  VES
+}
+
+enum Unit {
+  UNIDAD
+  KG
+  LITRO
+  METRO
+  PACK
+  BOTELLA
+  LATA
+  SIXPACK
+  CAJA
+  BOLSA
+  OTRO
+}
+
+enum PriceType {
+  DETAL
+  MAYOR
+}
+
+enum PaymentMethod {
+  EFECTIVO_USD
+  EFECTIVO_BS
+  TRANSFERENCIA
+  PUNTO_DE_NEGOCIO
+  MIXTO
+  CREDITO
+}
+
+enum SaleStatus {
+  COMPLETED
+  RETURNED
+  VOIDED
+}
+
+enum MovementType {
+  PURCHASE
+  SALE
+  SALE_RETURN
+  PURCHASE_RETURN
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+}
+
+enum CreditStatus {
+  PENDING
+  PARTIAL
+  PAID
+  VOID
+}
+
+enum ExpenseType {
+  REPLENISHMENT
+  TAX
+  RENT
+  PAYROLL
+  SERVICES
+  MAINTENANCE
+  OTHER
+}
+
+// ─────────────────────────── Usuarios ───────────────────────────
+
+model User {
+  id             String          @id @default(cuid())
+  name           String
+  email          String          @unique
+  password       String
+  role           Role            @default(VENDEDOR)
+  isActive       Boolean         @default(true)
+  sales          Sale[]
+  expenses       Expense[]
+  stockMoves     StockMovement[]
+  creditPayments CreditPayment[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@map("users")
+}
+
+// ─────────────────────────── Catálogos ───────────────────────────
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  products    Product[]
+
+  @@map("categories")
+}
+
+model Supplier {
+  id        String    @id @default(cuid())
+  name      String
+  phone     String?
+  rif       String?   @unique
+  address   String?
+  products  Product[]
+
+  @@map("suppliers")
+}
+
+model Entity {
+  id        String    @id @default(cuid())
+  name      String
+  rifCedula String?   @unique
+  type      String
+  phone     String?
+  expenses  Expense[]
+  createdAt DateTime  @default(now())
+
+  @@map("entities")
+}
+
+model Person {
+  id       String   @id @default(cuid())
+  name     String
+  lastname String
+  ci       String   @unique
+  phone    String?
+  address  String?
+  sales    Sale[]
+  credits  Credit[]
+
+  @@map("persons")
+}
+
+model Product {
+  id             String          @id @default(cuid())
+  name           String
+  description    String?
+  barcode        String?         @unique
+  categoryId     String
+  category       Category        @relation(fields: [categoryId], references: [id])
+  supplierId     String?
+  supplier       Supplier?       @relation(fields: [supplierId], references: [id])
+  unit           Unit            @default(UNIDAD)
+  costPrice      Decimal         @db.Decimal(12, 4)
+  wholesalePrice Decimal         @db.Decimal(12, 4)
+  retailPrice    Decimal         @db.Decimal(12, 4)
+  stock          Decimal         @db.Decimal(12, 3)
+  minStock       Decimal         @db.Decimal(12, 3) @default(5)
+  isActive       Boolean         @default(true)
+  saleItems      SaleItem[]
+  expenseItems   ExpenseItem[]
+  stockMoves     StockMovement[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([categoryId])
+  @@index([supplierId])
+  @@map("products")
+}
+
+// ─────────────────────────── Dólar BCV ───────────────────────────
+
+model ExchangeRate {
+  id        String   @id @default(cuid())
+  rate      Decimal  @db.Decimal(12, 4)
+  date      DateTime @unique @db.Date
+  createdAt DateTime @default(now())
+
+  @@map("exchange_rates")
+}
+
+// ─────────────────────────── Ventas ───────────────────────────
+
+model Sale {
+  id            String          @id @default(cuid())
+  userId        String
+  user          User            @relation(fields: [userId], references: [id])
+  personId      String?
+  person        Person?         @relation(fields: [personId], references: [id])
+  subtotalUsd   Decimal         @db.Decimal(12, 4)
+  totalUsd      Decimal         @db.Decimal(12, 4)
+  totalVes      Decimal         @db.Decimal(12, 4)
+  exchangeRate  Decimal         @db.Decimal(12, 4)
+  paymentMethod PaymentMethod
+  status        SaleStatus      @default(COMPLETED)
+  items         SaleItem[]
+  credit        Credit?
+  stockMoves    StockMovement[]
+  createdAt     DateTime        @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+  @@map("sales")
+}
+
+model SaleItem {
+  id           String          @id @default(cuid())
+  saleId       String
+  sale         Sale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product         @relation(fields: [productId], references: [id])
+  quantity     Decimal         @db.Decimal(12, 3)
+  unitPrice    Decimal         @db.Decimal(12, 4)
+  priceType    PriceType
+  costAtSale   Decimal         @db.Decimal(12, 4)
+  profitUsd    Decimal         @db.Decimal(12, 4)
+  profitVes    Decimal         @db.Decimal(12, 4)
+  profitMargin Decimal         @db.Decimal(6, 2)
+  stockMoves   StockMovement[]
+
+  @@index([saleId])
+  @@index([productId])
+  @@map("sale_items")
+}
+
+// ─────────────────────────── Gastos y egresos ───────────────────────────
+
+model Expense {
+  id           String        @id @default(cuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id])
+  entityId     String?
+  entity       Entity?       @relation(fields: [entityId], references: [id])
+  type         ExpenseType
+  description  String?
+  totalUsd     Decimal       @db.Decimal(12, 4)
+  totalVes     Decimal       @db.Decimal(12, 4)
+  exchangeRate Decimal       @db.Decimal(12, 4)
+  items        ExpenseItem[]
+  stockMoves   StockMovement[]
+  createdAt    DateTime      @default(now())
+
+  @@index([createdAt])
+  @@index([type])
+  @@index([entityId])
+  @@map("expenses")
+}
+
+model ExpenseItem {
+  id          String          @id @default(cuid())
+  expenseId   String
+  expense     Expense         @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product         @relation(fields: [productId], references: [id])
+  quantity    Decimal         @db.Decimal(12, 3)
+  unitCost    Decimal         @db.Decimal(12, 4)
+  subtotal    Decimal         @db.Decimal(12, 4)
+  stockMoves  StockMovement[]
+
+  @@index([expenseId])
+  @@index([productId])
+  @@map("expense_items")
+}
+
+// ─────────────────────────── Movimientos de inventario ───────────────────────────
+
+model StockMovement {
+  id            String       @id @default(cuid())
+  productId     String
+  product       Product      @relation(fields: [productId], references: [id])
+  userId        String
+  user          User         @relation(fields: [userId], references: [id])
+  quantity      Decimal      @db.Decimal(12, 3)
+  type          MovementType
+  unitCostUsd   Decimal      @db.Decimal(12, 4)
+  saleId        String?
+  sale          Sale?        @relation(fields: [saleId], references: [id])
+  saleItemId    String?
+  saleItem      SaleItem?    @relation(fields: [saleItemId], references: [id])
+  expenseId     String?
+  expense       Expense?     @relation(fields: [expenseId], references: [id])
+  expenseItemId String?
+  expenseItem   ExpenseItem? @relation(fields: [expenseItemId], references: [id])
+  createdAt     DateTime     @default(now())
+
+  @@index([productId])
+  @@index([createdAt])
+  @@index([userId])
+  @@map("stock_movements")
+}
+
+// ─────────────────────────── Fiados ───────────────────────────
+
+model Credit {
+  id         String          @id @default(cuid())
+  personId   String
+  person     Person          @relation(fields: [personId], references: [id])
+  saleId     String          @unique
+  sale       Sale            @relation(fields: [saleId], references: [id])
+  amountUsd  Decimal         @db.Decimal(12, 4)
+  amountBs   Decimal         @db.Decimal(12, 4)
+  balanceUsd Decimal         @db.Decimal(12, 4)
+  dueDate    DateTime?       @db.Date
+  status     CreditStatus    @default(PENDING)
+  payments   CreditPayment[]
+  createdAt  DateTime        @default(now())
+
+  @@index([personId, status])
+  @@map("credits")
+}
+
+model CreditPayment {
+  id           String   @id @default(cuid())
+  creditId     String
+  credit       Credit   @relation(fields: [creditId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  amount       Decimal  @db.Decimal(12, 4)
+  currency     Currency
+  amountUsd    Decimal  @db.Decimal(12, 4)
+  exchangeRate Decimal  @db.Decimal(12, 4)
+  createdAt    DateTime @default(now())
+
+  @@index([creditId])
+  @@map("credit_payments")
+}
