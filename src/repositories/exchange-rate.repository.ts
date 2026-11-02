@@ -26,6 +26,14 @@ export class ExchangeRateRepository {
     return prisma.exchangeRate.update({ where: { id }, data });
   }
 
+  async upsertByDate(date: Date, rate: number | string | Prisma.Decimal): Promise<ExchangeRate> {
+    return prisma.exchangeRate.upsert({
+      where: { date },
+      update: { rate },
+      create: { date, rate },
+    });
+  }
+
   async delete(id: string): Promise<ExchangeRate> {
     return prisma.exchangeRate.delete({ where: { id } });
   }

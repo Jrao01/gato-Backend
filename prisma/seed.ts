@@ -38,6 +38,45 @@ const PRODUCTS = [
   { name: "Hielo Polar 1.5kg", category: "Hielo", unit: "BOLSA", costPrice: 0.5, wholesalePrice: 0.7, retailPrice: 0.85, stock: 40, minStock: 10 },
 ];
 
+const USERS = [
+  {
+    name: "Ana Rodríguez",
+    email: "ana@gato.app",
+    password: "password123",
+    role: "ADMIN",
+    position: "GERENTE",
+    payType: "MENSUAL",
+    payAmount: 350,
+    phone: "0412-555-0101",
+    lastPaidAt: "2026-10-25",
+    hireDate: "2024-03-01",
+  },
+  {
+    name: "Luis Pérez",
+    email: "luis@gato.app",
+    password: "password123",
+    role: "VENDEDOR",
+    position: "CAJERO",
+    payType: "SEMANAL",
+    payAmount: 80,
+    phone: "0414-555-0102",
+    lastPaidAt: "2026-10-23",
+    hireDate: "2025-01-15",
+  },
+  {
+    name: "María González",
+    email: "maria@gato.app",
+    password: "password123",
+    role: "VENDEDOR",
+    position: "VENDEDOR",
+    payType: "SEMANAL",
+    payAmount: 75,
+    phone: "0424-555-0103",
+    lastPaidAt: "2026-10-24",
+    hireDate: "2025-05-10",
+  },
+];
+
 async function main() {
   console.log("🌱 Seeding database...");
 
@@ -82,6 +121,25 @@ async function main() {
         retailPrice: p.retailPrice,
         stock: p.stock,
         minStock: p.minStock,
+      },
+    });
+  }
+
+  for (const u of USERS) {
+    const existing = await prisma.user.findUnique({ where: { email: u.email } });
+    if (existing) continue;
+    await prisma.user.create({
+      data: {
+        name: u.name,
+        email: u.email,
+        password: u.password,
+        role: u.role as never,
+        position: u.position as never,
+        payType: u.payType as never,
+        payAmount: u.payAmount,
+        phone: u.phone,
+        lastPaidAt: u.lastPaidAt ? new Date(u.lastPaidAt) : undefined,
+        hireDate: u.hireDate ? new Date(u.hireDate) : undefined,
       },
     });
   }
