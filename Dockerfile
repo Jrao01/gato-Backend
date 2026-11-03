@@ -3,11 +3,11 @@ FROM node:20-alpine AS builder
 WORKDIR /usr/src/app
 
 COPY package.json ./
-RUN pnpm install
+RUN npm install
 
 COPY . .
 
-RUN pnpm run build
+RUN npm run build
 
 FROM node:20-alpine
 
