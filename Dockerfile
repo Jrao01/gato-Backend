@@ -15,8 +15,7 @@ WORKDIR /usr/src/app
 
 COPY --from=builder /usr/src/app/dist ./dist
 
-# Copy .env from project root
-COPY ../.env .env
+COPY ./.env .env
 
 EXPOSE 3000
 
