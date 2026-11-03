@@ -1,11 +1,12 @@
-FROM node:22-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /usr/src/app
 
-COPY package.json ./
-RUN npm install
+COPY apps/api/package.json ./
+RUN npm install --include-dev
 
-COPY . .
+COPY apps/api/tsconfig.json ./
+COPY apps/api/src ./src
 
 RUN npm run build
 
